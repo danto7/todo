@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { tick } from 'svelte';
 	import { TodoList, type Filter } from '#lib/todos.svelte.ts';
+	import Icon from '#lib/loam/Icon.svelte';
 
 	const list = new TodoList();
 
@@ -8,11 +9,11 @@
 	let editing = $state<string | null>(null);
 	let editDraft = $state('');
 
-	const filters: { value: Filter; label: string }[] = [
-		{ value: 'all', label: 'All' },
-		{ value: 'open', label: 'Open' },
-		{ value: 'done', label: 'Done' }
-	];
+	const filters = $derived<{ value: Filter; label: string; count: number }[]>([
+		{ value: 'all', label: 'All', count: list.items.length },
+		{ value: 'open', label: 'Open', count: list.openCount },
+		{ value: 'done', label: 'Done', count: list.doneCount }
+	]);
 
 	function submit(event: SubmitEvent) {
 		event.preventDefault();
@@ -37,53 +38,60 @@
 		if (event.key === 'Escape') editing = null;
 	}
 
-	const emptyText = $derived(
+	const empty = $derived(
 		list.filter === 'done'
-			? 'Nothing completed yet.'
+			? { title: 'Nothing done yet', text: 'Completed to-dos show up here.' }
 			: list.filter === 'open' && list.items.length
-				? 'All done! 🎉'
-				: 'No to-dos yet. Add one below.'
+				? { title: 'All done', text: 'Every to-do is checked off.' }
+				: { title: 'No to-dos', text: 'Add one below to get started.' }
 	);
 </script>
 
 <div class="app">
-	<header>
-		<h1>To-do</h1>
-		<p class="summary">{list.openCount} open · {list.doneCount} done</p>
+	<header class="head">
+		<h1 class="lm-title">To-do</h1>
+		<p class="lm-caption">{list.openCount} open · {list.doneCount} done</p>
 
-		<div class="segmented" role="tablist" aria-label="Filter">
+		<div class="lm-segmented" role="tablist" aria-label="Filter">
 			{#each filters as f (f.value)}
 				<button
+					type="button"
 					role="tab"
+					class="lm-tab"
 					aria-selected={list.filter === f.value}
-					class:active={list.filter === f.value}
-					onclick={() => (list.filter = f.value)}>{f.label}</button
+					onclick={() => (list.filter = f.value)}
 				>
+					{f.label}
+					<span class="count">{f.count}</span>
+				</button>
 			{/each}
 		</div>
 	</header>
 
-	<main>
+	<main class="body">
 		{#if list.visible.length === 0}
-			<p class="empty">{emptyText}</p>
+			<div class="lm-empty">
+				<Icon name="inbox" size={20} />
+				<p class="lm-heading">{empty.title}</p>
+				<p class="lm-empty-text">{empty.text}</p>
+			</div>
 		{:else}
-			<ul>
+			<ul class="lm-list" aria-label="To-dos">
 				{#each list.visible as todo (todo.uid)}
 					{@const done = todo.status === 'COMPLETED'}
-					<li class:done>
-						<button
-							class="check"
-							role="checkbox"
-							aria-checked={done}
-							aria-label={done ? 'Mark as open' : 'Mark as done'}
-							onclick={() => list.toggle(todo.uid)}
-						>
-							<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5" /></svg>
-						</button>
+					<li class="row" class:done>
+						<label class="check">
+							<input
+								type="checkbox"
+								checked={done}
+								onchange={() => list.toggle(todo.uid)}
+								aria-label={done ? `Mark “${todo.summary}” as open` : `Mark “${todo.summary}” as done`}
+							/>
+						</label>
 
 						{#if editing === todo.uid}
 							<input
-								class="edit"
+								class="lm-input edit"
 								data-edit={todo.uid}
 								bind:value={editDraft}
 								onblur={commitEdit}
@@ -92,13 +100,19 @@
 								aria-label="Edit to-do"
 							/>
 						{:else}
-							<button class="text" onclick={() => startEdit(todo.uid, todo.summary)}>
+							<button type="button" class="text" onclick={() => startEdit(todo.uid, todo.summary)}>
 								{todo.summary}
 							</button>
 						{/if}
 
-						<button class="delete" aria-label="Delete" onclick={() => list.remove(todo.uid)}>
-							<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" /></svg>
+						<button
+							type="button"
+							class="lm-iconbtn"
+							aria-label={`Delete “${todo.summary}”`}
+							title="Delete"
+							onclick={() => list.remove(todo.uid)}
+						>
+							<Icon name="trash" />
 						</button>
 					</li>
 				{/each}
@@ -106,27 +120,37 @@
 		{/if}
 
 		{#if list.doneCount > 0}
-			<button class="clear" onclick={() => list.clearCompleted()}>
-				Clear {list.doneCount} completed
-			</button>
+			<div class="actions">
+				<button type="button" class="lm-btn lm-btn-secondary" onclick={() => list.clearCompleted()}>
+					<Icon name="trash" />
+					Clear completed
+				</button>
+			</div>
 		{/if}
 	</main>
 
 	<form class="composer" onsubmit={submit}>
 		<input
+			class="lm-input"
 			bind:value={draft}
-			placeholder="Add a to-do…"
+			placeholder="Add a to-do"
 			aria-label="New to-do"
-			enterkeyhint="send"
+			enterkeyhint="done"
 			autocomplete="off"
 		/>
-		<button type="submit" aria-label="Add" disabled={!draft.trim()}>
-			<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
+		<button type="submit" class="lm-btn lm-btn-primary" disabled={!draft.trim()}>
+			<Icon name="plus" />
+			Add
 		</button>
 	</form>
 </div>
 
 <style>
+	/*
+	 * Loam components, ported from its bundle.css. Loam is tuned for dense desktop UI,
+	 * so on touch screens controls keep their look but get >=44px hit areas, and
+	 * text inputs use 16px so iOS Safari doesn't zoom on focus.
+	 */
 	.app {
 		max-width: 640px;
 		margin: 0 auto;
@@ -135,216 +159,265 @@
 		flex-direction: column;
 	}
 
-	header {
+	.head {
 		position: sticky;
 		top: 0;
 		z-index: 1;
-		padding: calc(env(safe-area-inset-top) + 16px) 16px 12px;
-		background: var(--bg);
+		display: flex;
+		flex-direction: column;
+		gap: var(--space-1);
+		padding: calc(env(safe-area-inset-top) + var(--space-6)) var(--space-4) var(--space-4);
+		background: var(--surface);
+		border-bottom: 1px solid var(--line);
 	}
 
-	h1 {
-		margin: 0;
-		font-size: 2rem;
-		letter-spacing: -0.02em;
-	}
-
-	.summary {
-		margin: 2px 0 14px;
-		color: var(--muted);
-		font-size: 0.9rem;
-	}
-
-	.segmented {
+	/* Tabs, segmented variant — stretched to full width on phones */
+	.lm-segmented {
 		display: grid;
 		grid-template-columns: repeat(3, 1fr);
-		padding: 3px;
-		border-radius: 10px;
-		background: var(--border);
+		gap: 2px;
+		padding: 2px;
+		margin-top: var(--space-3);
+		background: var(--surface-sunken);
+		border: 1px solid var(--line);
+		border-radius: var(--radius-md);
 	}
 
-	.segmented button {
-		border: 0;
-		background: transparent;
-		padding: 8px 0;
-		border-radius: 8px;
-		font-size: 0.9rem;
-		font-weight: 500;
-	}
-
-	.segmented button.active {
-		background: var(--surface);
-		box-shadow: 0 1px 3px rgb(0 0 0 / 0.12);
-	}
-
-	main {
-		flex: 1;
-		padding: 4px 16px 16px;
-	}
-
-	ul {
-		list-style: none;
-		margin: 0;
-		padding: 0;
-		border-radius: 14px;
-		overflow: hidden;
-		background: var(--surface);
-		border: 1px solid var(--border);
-	}
-
-	li {
-		display: flex;
+	.lm-tab {
+		display: inline-flex;
 		align-items: center;
-		gap: 4px;
-		min-height: 56px;
-		padding-left: 6px;
-	}
-
-	li + li {
-		border-top: 1px solid var(--border);
-	}
-
-	button {
+		justify-content: center;
+		gap: var(--space-1);
+		height: 36px;
+		padding: 0 var(--space-3);
+		border: 0;
+		border-radius: var(--radius-sm);
+		background: none;
+		font: 500 13px/18px var(--font-sans);
+		color: var(--ink-muted);
 		cursor: pointer;
 	}
 
-	.check,
-	.delete {
+	.lm-tab[aria-selected='true'] {
+		color: var(--ink);
+		background: var(--surface-raised);
+		box-shadow: 0 0 0 1px var(--line);
+	}
+
+	.count {
+		font-size: 12px;
+		color: var(--ink-muted);
+		font-variant-numeric: tabular-nums;
+	}
+
+	.body {
+		flex: 1;
+		padding: var(--space-4);
+	}
+
+	/* List */
+	.lm-list {
+		list-style: none;
+		margin: 0;
+		padding: 0;
+		background: var(--surface-raised);
+		border: 1px solid var(--line);
+		border-radius: var(--radius-lg);
+		overflow: hidden;
+	}
+
+	.row {
+		display: flex;
+		align-items: center;
+		min-height: 48px;
+		padding: 0 var(--space-1);
+		border-bottom: 1px solid var(--line);
+	}
+
+	.row:last-child {
+		border-bottom: 0;
+	}
+
+	/* Checkbox: 18px box in a 44px hit area */
+	.check {
 		flex: none;
-		width: 44px;
-		height: 44px;
 		display: grid;
 		place-items: center;
-		border: 0;
-		background: transparent;
+		width: 44px;
+		height: 44px;
+		cursor: pointer;
 	}
 
-	.check svg {
-		width: 26px;
-		height: 26px;
-		padding: 3px;
-		border-radius: 50%;
-		border: 2px solid var(--muted);
-		fill: none;
-		stroke: transparent;
-		stroke-width: 3;
-		stroke-linecap: round;
-		stroke-linejoin: round;
-		transition:
-			background 0.15s,
-			border-color 0.15s;
+	.check input {
+		appearance: none;
+		margin: 0;
+		width: 18px;
+		height: 18px;
+		display: grid;
+		place-content: center;
+		border: 1px solid var(--line-strong);
+		border-radius: var(--radius-sm);
+		background: var(--surface-raised);
+		cursor: pointer;
 	}
 
-	.done .check svg {
+	.check input:checked {
 		background: var(--accent);
 		border-color: var(--accent);
-		stroke: #fff;
+	}
+
+	.check input:checked::after {
+		content: '';
+		width: 9px;
+		height: 5px;
+		border: 2px solid var(--on-accent);
+		border-top: 0;
+		border-right: 0;
+		transform: translateY(-1px) rotate(-45deg);
 	}
 
 	.text {
 		flex: 1;
 		min-width: 0;
-		padding: 14px 4px;
+		padding: var(--space-3) var(--space-1);
 		border: 0;
-		background: transparent;
+		background: none;
 		text-align: left;
-		font-size: 1.05rem;
+		font: 400 15px/20px var(--font-sans);
+		color: var(--ink);
 		overflow-wrap: anywhere;
+		cursor: text;
 	}
 
 	.done .text {
-		color: var(--muted);
+		color: var(--ink-muted);
 		text-decoration: line-through;
+	}
+
+	/* Input */
+	.lm-input {
+		width: 100%;
+		height: 40px;
+		padding: 0 var(--space-3);
+		font: 400 16px/20px var(--font-sans);
+		color: var(--ink);
+		background: var(--surface-raised);
+		border: 1px solid var(--line-strong);
+		border-radius: var(--radius-md);
+	}
+
+	.lm-input::placeholder {
+		color: var(--ink-muted);
+	}
+
+	.lm-input:focus {
+		outline: 2px solid var(--accent);
+		outline-offset: -1px;
+		border-color: var(--accent);
 	}
 
 	.edit {
 		flex: 1;
 		min-width: 0;
-		padding: 10px 8px;
-		border: 1px solid var(--accent);
-		border-radius: 8px;
-		background: var(--bg);
-		font-size: 1.05rem;
-		outline: none;
+		margin: var(--space-1) 0;
 	}
 
-	.delete svg {
-		width: 18px;
-		height: 18px;
-		fill: none;
-		stroke: var(--muted);
-		stroke-width: 2;
-		stroke-linecap: round;
-	}
-
-	.delete:active svg {
-		stroke: var(--danger);
-	}
-
-	.empty {
-		margin: 48px 0;
-		text-align: center;
-		color: var(--muted);
-	}
-
-	.clear {
-		display: block;
-		margin: 16px auto 0;
-		padding: 10px 16px;
+	/* IconButton, ghost: 32px visual in a 44px hit area */
+	.lm-iconbtn {
+		flex: none;
+		display: grid;
+		place-items: center;
+		width: 44px;
+		height: 44px;
+		padding: 0;
 		border: 0;
-		background: transparent;
-		color: var(--danger);
-		font-size: 0.95rem;
+		border-radius: var(--radius-md);
+		background: none;
+		color: var(--ink-muted);
+		cursor: pointer;
 	}
 
+	.lm-iconbtn:active {
+		background: var(--surface-sunken);
+		color: var(--ink);
+	}
+
+	/* Button */
+	.lm-btn {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		gap: var(--space-1);
+		height: 40px;
+		padding: 0 var(--space-3);
+		border: 1px solid transparent;
+		border-radius: var(--radius-md);
+		font: 500 13px/18px var(--font-sans);
+		white-space: nowrap;
+		cursor: pointer;
+		background: none;
+		color: var(--ink);
+	}
+
+	.lm-btn-primary {
+		background: var(--accent);
+		color: var(--on-accent);
+	}
+
+	.lm-btn-secondary {
+		background: var(--surface-raised);
+		border-color: var(--line-strong);
+	}
+
+	.lm-btn-secondary:active {
+		background: var(--surface-sunken);
+	}
+
+	.lm-btn:disabled {
+		opacity: 0.5;
+		cursor: not-allowed;
+	}
+
+	.actions {
+		display: flex;
+		justify-content: center;
+		margin-top: var(--space-4);
+	}
+
+	/* EmptyState */
+	.lm-empty {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		gap: var(--space-2);
+		padding: var(--space-6);
+		margin-top: var(--space-6);
+		text-align: center;
+		color: var(--ink-muted);
+	}
+
+	.lm-empty .lm-heading {
+		color: var(--ink);
+	}
+
+	.lm-empty-text {
+		max-width: 320px;
+		margin: 0;
+	}
+
+	/* Composer: sunken well pinned to the bottom, within thumb reach */
 	.composer {
 		position: sticky;
 		bottom: 0;
 		display: flex;
-		gap: 8px;
-		padding: 10px 16px calc(env(safe-area-inset-bottom) + 10px);
-		background: var(--bg);
-		border-top: 1px solid var(--border);
+		gap: var(--space-2);
+		padding: var(--space-3) var(--space-4) calc(env(safe-area-inset-bottom) + var(--space-3));
+		background: var(--surface-sunken);
+		border-top: 1px solid var(--line);
 	}
 
-	.composer input {
+	.composer .lm-input {
 		flex: 1;
 		min-width: 0;
-		height: 48px;
-		padding: 0 16px;
-		border: 1px solid var(--border);
-		border-radius: 24px;
-		background: var(--surface);
-		/* 16px+ prevents iOS Safari from zooming on focus */
-		font-size: 1rem;
-		outline: none;
-	}
-
-	.composer input:focus {
-		border-color: var(--accent);
-	}
-
-	.composer button {
-		flex: none;
-		width: 48px;
-		height: 48px;
-		border: 0;
-		border-radius: 50%;
-		background: var(--accent);
-		display: grid;
-		place-items: center;
-	}
-
-	.composer button:disabled {
-		opacity: 0.4;
-	}
-
-	.composer svg {
-		width: 22px;
-		height: 22px;
-		fill: none;
-		stroke: #fff;
-		stroke-width: 2.5;
-		stroke-linecap: round;
 	}
 </style>
