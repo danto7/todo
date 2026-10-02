@@ -1,16 +1,24 @@
 <script lang="ts">
 	import { flushSync } from 'svelte';
 	import { flip } from 'svelte/animate';
-	import { SvelteSet } from 'svelte/reactivity';
+	import { SvelteMap, SvelteSet } from 'svelte/reactivity';
 	import { slide } from 'svelte/transition';
 	import { cubicOut } from 'svelte/easing';
-	import { TodoList, type Filter } from '#lib/todos.svelte.ts';
+	import { TodoList } from '#lib/todos.svelte.ts';
+	import type { Todo } from '#lib/todo.ts';
 	import Icon from '#lib/loam/Icon.svelte';
 	import TodoRow from '#lib/components/TodoRow.svelte';
 	import NewTodoRow from '#lib/components/NewTodoRow.svelte';
-	import SegmentedControl from '#lib/components/SegmentedControl.svelte';
 
 	const list = new TodoList();
+
+	// A checked to-do stays in place for a moment (so the tap registers and can be
+	// undone), then moves into the collapsed Completed section.
+	const MOVE_DELAY = 2000;
+	const pending = new SvelteMap<string, ReturnType<typeof setTimeout>>();
+	const mainList = $derived(list.items.filter((t) => t.status !== 'COMPLETED' || pending.has(t.uid)));
+	const completedList = $derived(list.completed.filter((t) => !pending.has(t.uid)));
+	let completedOpen = $state(false);
 
 	// The empty row a new to-do is typed into, opened by the floating + button.
 	let adding = $state(false);
@@ -19,8 +27,12 @@
 	// Select mode: tap rows to select them, then act on all of them at once.
 	let selecting = $state(false);
 	const selected = new SvelteSet<string>();
-	// Only act on what's on screen, so a filter can't hide what gets deleted.
-	const selectedVisible = $derived(list.visible.filter((t) => selected.has(t.uid)).map((t) => t.uid));
+	// Only act on what's on screen, so a collapsed section can't hide what gets deleted.
+	const selectedVisible = $derived(
+		[...mainList, ...(completedOpen ? completedList : [])]
+			.filter((t) => selected.has(t.uid))
+			.map((t) => t.uid)
+	);
 	let swipedUid = $state<string | null>(null);
 
 	// Large title collapses into the nav bar once it scrolls under it.
@@ -30,12 +42,6 @@
 
 	const motion = matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 280;
 
-	const filters: { value: Filter; label: string }[] = [
-		{ value: 'all', label: 'All' },
-		{ value: 'open', label: 'Open' },
-		{ value: 'done', label: 'Done' }
-	];
-
 	function startAdding() {
 		if (adding) {
 			// Already typing: save what's there and stay in the new row.
@@ -43,7 +49,6 @@
 			draftInput?.focus();
 			return;
 		}
-		if (list.filter === 'done') list.filter = 'all';
 		stopSelecting();
 		swipedUid = null;
 		// Render the row synchronously so focus() runs inside the tap,
@@ -63,8 +68,26 @@
 		adding = false;
 	}
 
+	function toggle(todo: Todo) {
+		const timer = pending.get(todo.uid);
+		if (timer) {
+			// Unchecked before it moved: cancel the move.
+			clearTimeout(timer);
+			pending.delete(todo.uid);
+		} else if (todo.status !== 'COMPLETED') {
+			// Mark pending before completing, so it never leaves the main list early.
+			pending.set(
+				todo.uid,
+				setTimeout(() => pending.delete(todo.uid), MOVE_DELAY)
+			);
+		}
+		list.toggle(todo.uid);
+	}
+
 	function remove(uid: string) {
 		if (swipedUid === uid) swipedUid = null;
+		clearTimeout(pending.get(uid));
+		pending.delete(uid);
 		list.remove(uid);
 	}
 
@@ -96,11 +119,9 @@
 	const count = $derived(selectedVisible.length);
 
 	const empty = $derived(
-		list.filter === 'done'
-			? { title: 'Nothing done yet', text: 'Completed to-dos show up here.' }
-			: list.filter === 'open' && list.items.length
-				? { title: 'All done', text: 'Every to-do is checked off.' }
-				: { title: 'No to-dos', text: 'Tap + to add one.' }
+		list.doneCount > 0
+			? { title: 'All done', text: 'Every to-do is checked off.' }
+			: { title: 'No to-dos', text: 'Tap + to add one.' }
 	);
 </script>
 
@@ -135,28 +156,10 @@
 	<header class="head">
 		<h1 class="ios-large-title" bind:this={titleEl}>To-do</h1>
 		<p class="ios-subhead">{list.openCount} open</p>
-		<div class="filters">
-			<SegmentedControl options={filters} bind:value={list.filter} label="Filter" />
-		</div>
 	</header>
 
 	<main class="body">
-		{#if list.doneCount > 0}
-			<div class="completed-bar">
-				<span>{list.doneCount} completed</span>
-				<button
-					type="button"
-					class="ios-icon-btn clear"
-					aria-label="Clear completed"
-					title="Clear completed"
-					onclick={() => list.clearCompleted()}
-				>
-					<Icon name="trash" size={18} />
-				</button>
-			</div>
-		{/if}
-
-		{#if list.visible.length === 0 && !adding}
+		{#if mainList.length === 0 && !adding}
 			<div class="empty">
 				<Icon name="inbox" size={28} />
 				<p class="empty-title">{empty.title}</p>
@@ -174,7 +177,7 @@
 						/>
 					</li>
 				{/if}
-				{#each list.visible as todo (todo.uid)}
+				{#each mainList as todo (todo.uid)}
 					<li animate:flip={{ duration: motion, easing: cubicOut }} transition:slide={{ duration: motion }}>
 						<TodoRow
 							{todo}
@@ -183,16 +186,56 @@
 							onSelect={() => toggleSelected(todo.uid)}
 							swiped={swipedUid === todo.uid}
 							onSwipe={(open) => (swipedUid = open ? todo.uid : null)}
-							onToggle={() => list.toggle(todo.uid)}
+							onToggle={() => toggle(todo)}
 							onRename={(s) => list.rename(todo.uid, s)}
 							onDelete={() => remove(todo.uid)}
 						/>
 					</li>
 				{/each}
 			</ul>
-			{#if !selecting && list.visible.length > 0}
+			{#if !selecting && mainList.length > 0}
 				<p class="hint">Swipe left on a to-do to delete it.</p>
 			{/if}
+		{/if}
+
+		{#if completedList.length > 0}
+			<details class="completed" bind:open={completedOpen}>
+				<summary>
+					<span class="chevron"><Icon name="chevron-right" size={18} stroke={2} /></span>
+					<span class="summary-label">Completed</span>
+					<span class="summary-count">{completedList.length}</span>
+				</summary>
+				<ul class="group" aria-label="Completed to-dos">
+					{#each completedList as todo (todo.uid)}
+						<li animate:flip={{ duration: motion, easing: cubicOut }} transition:slide={{ duration: motion }}>
+							<TodoRow
+								{todo}
+								{selecting}
+								selected={selected.has(todo.uid)}
+								onSelect={() => toggleSelected(todo.uid)}
+								swiped={swipedUid === todo.uid}
+								onSwipe={(open) => (swipedUid = open ? todo.uid : null)}
+								onToggle={() => toggle(todo)}
+								onRename={(s) => list.rename(todo.uid, s)}
+								onDelete={() => remove(todo.uid)}
+							/>
+						</li>
+					{/each}
+				</ul>
+				{#if !selecting}
+					<div class="completed-foot">
+						<button
+							type="button"
+							class="ios-icon-btn danger"
+							aria-label="Clear completed"
+							title="Clear completed"
+							onclick={() => list.clearCompleted()}
+						>
+							<Icon name="trash" size={20} />
+						</button>
+					</div>
+				{/if}
+			</details>
 		{/if}
 	</main>
 
@@ -296,29 +339,10 @@
 		padding: 0 var(--space-4) var(--space-2);
 	}
 
-	.filters {
-		margin-top: var(--space-4);
-	}
-
 	.body {
 		flex: 1;
 		/* Room below the last row so the floating button never covers it */
 		padding: var(--space-2) var(--space-4) calc(env(safe-area-inset-bottom) + 96px);
-	}
-
-	.completed-bar {
-		display: flex;
-		align-items: center;
-		gap: var(--space-1);
-		margin: 0 0 var(--space-1) var(--space-4);
-		font: 400 15px/20px var(--font-ui);
-		color: var(--ink-muted);
-	}
-
-	.completed-bar .clear {
-		width: 36px;
-		height: 36px;
-		min-height: 0;
 	}
 
 	/* Inset grouped list */
@@ -329,6 +353,68 @@
 		border-radius: var(--radius-lg);
 		overflow: hidden;
 		background: var(--surface-raised);
+	}
+
+	/* Completed section: a native <details>, collapsed by default */
+	.completed {
+		margin-top: var(--space-6);
+	}
+
+	.completed summary {
+		display: flex;
+		align-items: center;
+		gap: var(--space-2);
+		min-height: 44px;
+		padding: 0 var(--space-4) 0 var(--space-3);
+		border-radius: var(--radius-lg);
+		list-style: none;
+		font: 600 17px/22px var(--font-ui);
+		color: var(--ink);
+		cursor: pointer;
+		-webkit-user-select: none;
+		user-select: none;
+	}
+
+	.completed summary::-webkit-details-marker {
+		display: none;
+	}
+
+	.completed summary:active {
+		background: var(--fill);
+	}
+
+	.chevron {
+		display: grid;
+		color: var(--accent);
+		transition: transform 0.25s var(--ease);
+	}
+
+	.completed[open] .chevron {
+		transform: rotate(90deg);
+	}
+
+	.summary-label {
+		flex: 1;
+	}
+
+	.summary-count {
+		font-weight: 400;
+		color: var(--ink-muted);
+		font-variant-numeric: tabular-nums;
+	}
+
+	.completed .group {
+		margin-top: var(--space-2);
+	}
+
+	.completed-foot {
+		display: flex;
+		justify-content: flex-end;
+		margin-top: var(--space-1);
+	}
+
+	.completed-foot .danger {
+		color: var(--danger);
 	}
 
 	.hint {

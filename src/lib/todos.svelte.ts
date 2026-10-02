@@ -1,23 +1,18 @@
 import { createTodo, type Todo } from './todo';
 import { localTodoStorage, type TodoStorage } from './storage';
 
-export type Filter = 'all' | 'open' | 'done';
-
 export class TodoList {
 	items = $state<Todo[]>([]);
-	filter = $state<Filter>('all');
 
-	visible = $derived(
-		this.items.filter((t) =>
-			this.filter === 'all'
-				? true
-				: this.filter === 'open'
-					? t.status !== 'COMPLETED'
-					: t.status === 'COMPLETED'
-		)
+	open = $derived(this.items.filter((t) => t.status !== 'COMPLETED'));
+	/** Most recently completed first. */
+	completed = $derived(
+		this.items
+			.filter((t) => t.status === 'COMPLETED')
+			.sort((a, b) => (b.completed ?? '').localeCompare(a.completed ?? ''))
 	);
-	openCount = $derived(this.items.filter((t) => t.status !== 'COMPLETED').length);
-	doneCount = $derived(this.items.length - this.openCount);
+	openCount = $derived(this.open.length);
+	doneCount = $derived(this.completed.length);
 
 	#storage: TodoStorage;
 
