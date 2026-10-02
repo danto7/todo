@@ -1,0 +1,83 @@
+/*
+ * iOS-flavoured layer on top of Loam: system font and type sizes from Apple's
+ * Human Interface Guidelines. Loam's colour tokens stay the source of truth.
+ */
+:root {
+	/* SF Pro on Apple devices, bundled Inter everywhere else. */
+	--font-ui: -apple-system, BlinkMacSystemFont, 'Inter Variable', 'Inter', system-ui, sans-serif;
+	--bar-bg: color-mix(in srgb, var(--surface) 78%, transparent);
+	--fill: color-mix(in srgb, var(--ink) 8%, transparent);
+	--hairline: 0.5px;
+	--ease: cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+@media (prefers-color-scheme: dark) {
+	:root {
+		--fill: color-mix(in srgb, var(--ink) 12%, transparent);
+	}
+}
+
+html,
+body {
+	font-family: var(--font-ui);
+	font-size: 17px;
+	line-height: 22px;
+}
+
+.ios-large-title {
+	font: 700 34px/41px var(--font-ui);
+	letter-spacing: 0.01em;
+	margin: 0;
+}
+
+.ios-subhead {
+	font: 400 15px/20px var(--font-ui);
+	color: var(--ink-muted);
+	margin: 0;
+}
+
+/* Text button in the tint colour, as in iOS nav and tool bars */
+.ios-text-btn {
+	min-height: 44px;
+	padding: 0 var(--space-2);
+	border: 0;
+	background: none;
+	color: var(--accent);
+	font: 400 17px/22px var(--font-ui);
+	cursor: pointer;
+}
+
+.ios-text-btn:active {
+	opacity: 0.4;
+}
+
+/* Icon-only button in the tint colour; always carries an aria-label */
+.ios-icon-btn {
+	display: grid;
+	place-items: center;
+	width: 44px;
+	height: 44px;
+	padding: 0;
+	border: 0;
+	border-radius: var(--radius-md);
+	background: none;
+	color: var(--accent);
+	cursor: pointer;
+}
+
+.ios-icon-btn:active {
+	opacity: 0.4;
+}
+
+.ios-icon-btn:disabled {
+	opacity: 0.3;
+	cursor: default;
+}
+
+@media (prefers-reduced-motion: reduce) {
+	*,
+	*::before,
+	*::after {
+		transition-duration: 0s !important;
+	}
+}

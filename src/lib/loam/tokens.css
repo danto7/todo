@@ -1,0 +1,56 @@
+/*
+ * Loam design tokens (https://claude.ai/artifact/67dw45QbsfkiwU25r8hKZG, project/tokens.json).
+ * Copied verbatim; light and dark follow the OS setting.
+ */
+:root {
+	--surface: #f6f4f0;
+	--surface-raised: #ffffff;
+	--surface-sunken: #eceae4;
+	--line: #dcd8d0;
+	--line-strong: #8a8c91;
+	--ink: #1f2023;
+	--ink-muted: #5f6166;
+	--accent: #2f6f62;
+	--on-accent: #ffffff;
+	--accent-soft: #dcebe6;
+	--accent-ink: #24584e;
+	--warn: #8f5408;
+	--danger: #b3362c;
+
+	--font-sans: 'Inter Variable', 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+	--font-mono: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+
+	--space-1: 4px;
+	--space-2: 8px;
+	--space-3: 12px;
+	--space-4: 16px;
+	--space-6: 24px;
+
+	--radius-sm: 4px;
+	--radius-md: 6px;
+	--radius-lg: 10px;
+
+	--shadow-pop: 0 4px 16px rgba(20, 22, 24, 0.12);
+
+	color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+	:root {
+		--surface: #17181a;
+		--surface-raised: #202224;
+		--surface-sunken: #111213;
+		--line: #33363a;
+		--line-strong: #6b6e74;
+		--ink: #ecebe7;
+		--ink-muted: #a3a5aa;
+		--accent: #7cc2b1;
+		--on-accent: #0f1a17;
+		--accent-soft: #1f3a34;
+		--accent-ink: #9fd6c8;
+		--warn: #e0a24a;
+		--danger: #f08a7e;
+
+		color-scheme: dark;
+	}
+}

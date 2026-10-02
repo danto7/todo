@@ -1,129 +1,264 @@
 <script lang="ts">
-	import { tick } from 'svelte';
-	import { TodoList, type Filter } from '#lib/todos.svelte.ts';
+	import { flushSync } from 'svelte';
+	import { flip } from 'svelte/animate';
+	import { SvelteMap, SvelteSet } from 'svelte/reactivity';
+	import { slide } from 'svelte/transition';
+	import { cubicOut } from 'svelte/easing';
+	import { TodoList } from '#lib/todos.svelte.ts';
+	import type { Todo } from '#lib/todo.ts';
+	import Icon from '#lib/loam/Icon.svelte';
+	import TodoRow from '#lib/components/TodoRow.svelte';
+	import NewTodoRow from '#lib/components/NewTodoRow.svelte';
 
 	const list = new TodoList();
 
+	// A checked to-do stays in place for a moment (so the tap registers and can be
+	// undone), then moves into the collapsed Completed section.
+	const MOVE_DELAY = 2000;
+	const pending = new SvelteMap<string, ReturnType<typeof setTimeout>>();
+	const mainList = $derived(list.items.filter((t) => t.status !== 'COMPLETED' || pending.has(t.uid)));
+	const completedList = $derived(list.completed.filter((t) => !pending.has(t.uid)));
+	let completedOpen = $state(false);
+
+	// The empty row a new to-do is typed into, opened by the floating + button.
+	let adding = $state(false);
 	let draft = $state('');
-	let editing = $state<string | null>(null);
-	let editDraft = $state('');
+	let draftInput = $state<HTMLInputElement>();
+	// Select mode: tap rows to select them, then act on all of them at once.
+	let selecting = $state(false);
+	const selected = new SvelteSet<string>();
+	// Only act on what's on screen, so a collapsed section can't hide what gets deleted.
+	const selectedVisible = $derived(
+		[...mainList, ...(completedOpen ? completedList : [])]
+			.filter((t) => selected.has(t.uid))
+			.map((t) => t.uid)
+	);
+	let swipedUid = $state<string | null>(null);
 
-	const filters: { value: Filter; label: string }[] = [
-		{ value: 'all', label: 'All' },
-		{ value: 'open', label: 'Open' },
-		{ value: 'done', label: 'Done' }
-	];
+	// Large title collapses into the nav bar once it scrolls under it.
+	let scrollY = $state(0);
+	let titleEl = $state<HTMLElement>();
+	const collapsed = $derived(!!titleEl && scrollY > titleEl.offsetTop + titleEl.offsetHeight - 52);
 
-	function submit(event: SubmitEvent) {
-		event.preventDefault();
+	const motion = matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 280;
+
+	function startAdding() {
+		if (adding) {
+			// Already typing: save what's there and stay in the new row.
+			if (draft.trim()) commitDraft();
+			draftInput?.focus();
+			return;
+		}
+		stopSelecting();
+		swipedUid = null;
+		// Render the row synchronously so focus() runs inside the tap,
+		// which is what lets iOS open the keyboard.
+		flushSync(() => (adding = true));
+		draftInput?.focus();
+	}
+
+	function commitDraft() {
 		list.add(draft);
 		draft = '';
 	}
 
-	async function startEdit(uid: string, summary: string) {
-		editing = uid;
-		editDraft = summary;
-		await tick();
-		document.querySelector<HTMLInputElement>(`[data-edit="${uid}"]`)?.focus();
+	function closeDraft() {
+		if (draft.trim()) commitDraft();
+		draft = '';
+		adding = false;
 	}
 
-	function commitEdit() {
-		if (editing) list.rename(editing, editDraft);
-		editing = null;
+	function toggle(todo: Todo) {
+		const timer = pending.get(todo.uid);
+		if (timer) {
+			// Unchecked before it moved: cancel the move.
+			clearTimeout(timer);
+			pending.delete(todo.uid);
+		} else if (todo.status !== 'COMPLETED') {
+			// Mark pending before completing, so it never leaves the main list early.
+			pending.set(
+				todo.uid,
+				setTimeout(() => pending.delete(todo.uid), MOVE_DELAY)
+			);
+		}
+		list.toggle(todo.uid);
 	}
 
-	function onEditKey(event: KeyboardEvent) {
-		if (event.key === 'Enter') commitEdit();
-		if (event.key === 'Escape') editing = null;
+	function remove(uid: string) {
+		if (swipedUid === uid) swipedUid = null;
+		clearTimeout(pending.get(uid));
+		pending.delete(uid);
+		list.remove(uid);
 	}
 
-	const emptyText = $derived(
-		list.filter === 'done'
-			? 'Nothing completed yet.'
-			: list.filter === 'open' && list.items.length
-				? 'All done! 🎉'
-				: 'No to-dos yet. Add one below.'
+	function startSelecting() {
+		selecting = true;
+		swipedUid = null;
+	}
+
+	function stopSelecting() {
+		selecting = false;
+		selected.clear();
+	}
+
+	function toggleSelected(uid: string) {
+		if (selected.has(uid)) selected.delete(uid);
+		else selected.add(uid);
+	}
+
+	function deleteSelected() {
+		list.removeMany(selectedVisible);
+		stopSelecting();
+	}
+
+	const count = $derived(selectedVisible.length);
+
+	const empty = $derived(
+		list.doneCount > 0
+			? { title: 'All done', text: 'Every to-do is checked off.' }
+			: { title: 'No to-dos', text: 'Tap + to add one.' }
 	);
 </script>
 
-<div class="app">
-	<header>
-		<h1>To-do</h1>
-		<p class="summary">{list.openCount} open · {list.doneCount} done</p>
+<svelte:window
+	onscroll={() => (scrollY = window.scrollY)}
+	onkeydown={(e) => selecting && e.key === 'Escape' && stopSelecting()}
+/>
 
-		<div class="segmented" role="tablist" aria-label="Filter">
-			{#each filters as f (f.value)}
+<div class="app">
+	<nav class="navbar" class:collapsed>
+		{#if selecting}
+			<span class="select-title" aria-live="polite">{count === 0 ? 'Select to-dos' : `${count} selected`}</span>
+			<div class="nav-right nav-group">
 				<button
-					role="tab"
-					aria-selected={list.filter === f.value}
-					class:active={list.filter === f.value}
-					onclick={() => (list.filter = f.value)}>{f.label}</button
+					type="button"
+					class="ios-icon-btn danger"
+					aria-label={`Delete ${count}`}
+					title="Delete"
+					disabled={count === 0}
+					onclick={deleteSelected}
 				>
-			{/each}
-		</div>
+					<Icon name="trash" size={22} />
+				</button>
+				<!-- Cancel sits exactly where the pen was, so the same tap undoes it -->
+				<button type="button" class="ios-icon-btn" aria-label="Cancel" title="Cancel" onclick={stopSelecting}>
+					<Icon name="x" size={22} stroke={2} />
+				</button>
+			</div>
+		{:else}
+			<span class="nav-title" aria-hidden={!collapsed}>To-do</span>
+			{#if list.items.length > 0}
+				<button
+					type="button"
+					class="ios-icon-btn nav-right"
+					aria-label="Edit to-dos"
+					title="Edit"
+					onclick={startSelecting}
+				>
+					<Icon name="pen" size={22} />
+				</button>
+			{/if}
+		{/if}
+	</nav>
+
+	<header class="head">
+		<h1 class="ios-large-title" bind:this={titleEl}>To-do</h1>
+		<p class="ios-subhead">{list.openCount} open</p>
 	</header>
 
-	<main>
-		{#if list.visible.length === 0}
-			<p class="empty">{emptyText}</p>
+	<main class="body">
+		{#if mainList.length === 0 && !adding}
+			<div class="empty">
+				<Icon name="inbox" size={28} />
+				<p class="empty-title">{empty.title}</p>
+				<p class="ios-subhead">{empty.text}</p>
+			</div>
 		{:else}
-			<ul>
-				{#each list.visible as todo (todo.uid)}
-					{@const done = todo.status === 'COMPLETED'}
-					<li class:done>
-						<button
-							class="check"
-							role="checkbox"
-							aria-checked={done}
-							aria-label={done ? 'Mark as open' : 'Mark as done'}
-							onclick={() => list.toggle(todo.uid)}
-						>
-							<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5" /></svg>
-						</button>
-
-						{#if editing === todo.uid}
-							<input
-								class="edit"
-								data-edit={todo.uid}
-								bind:value={editDraft}
-								onblur={commitEdit}
-								onkeydown={onEditKey}
-								enterkeyhint="done"
-								aria-label="Edit to-do"
-							/>
-						{:else}
-							<button class="text" onclick={() => startEdit(todo.uid, todo.summary)}>
-								{todo.summary}
-							</button>
-						{/if}
-
-						<button class="delete" aria-label="Delete" onclick={() => list.remove(todo.uid)}>
-							<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" /></svg>
-						</button>
+			<ul class="group" aria-label="To-dos">
+				{#if adding}
+					<li transition:slide={{ duration: motion }}>
+						<NewTodoRow
+							bind:value={draft}
+							bind:input={draftInput}
+							onCommit={commitDraft}
+							onClose={closeDraft}
+						/>
+					</li>
+				{/if}
+				{#each mainList as todo (todo.uid)}
+					<li animate:flip={{ duration: motion, easing: cubicOut }} transition:slide={{ duration: motion }}>
+						<TodoRow
+							{todo}
+							{selecting}
+							selected={selected.has(todo.uid)}
+							onSelect={() => toggleSelected(todo.uid)}
+							swiped={swipedUid === todo.uid}
+							onSwipe={(open) => (swipedUid = open ? todo.uid : null)}
+							onToggle={() => toggle(todo)}
+							onRename={(s) => list.rename(todo.uid, s)}
+							onDelete={() => remove(todo.uid)}
+						/>
 					</li>
 				{/each}
 			</ul>
+			{#if !selecting && mainList.length > 0}
+				<p class="hint">Swipe left on a to-do to delete it.</p>
+			{/if}
 		{/if}
 
-		{#if list.doneCount > 0}
-			<button class="clear" onclick={() => list.clearCompleted()}>
-				Clear {list.doneCount} completed
-			</button>
+		{#if completedList.length > 0}
+			<details class="completed" bind:open={completedOpen}>
+				<summary>
+					<span class="chevron"><Icon name="chevron-right" size={18} stroke={2} /></span>
+					<span class="summary-label">Completed</span>
+					<span class="summary-count">{completedList.length}</span>
+				</summary>
+				<ul class="group" aria-label="Completed to-dos">
+					{#each completedList as todo (todo.uid)}
+						<li animate:flip={{ duration: motion, easing: cubicOut }} transition:slide={{ duration: motion }}>
+							<TodoRow
+								{todo}
+								{selecting}
+								selected={selected.has(todo.uid)}
+								onSelect={() => toggleSelected(todo.uid)}
+								swiped={swipedUid === todo.uid}
+								onSwipe={(open) => (swipedUid = open ? todo.uid : null)}
+								onToggle={() => toggle(todo)}
+								onRename={(s) => list.rename(todo.uid, s)}
+								onDelete={() => remove(todo.uid)}
+							/>
+						</li>
+					{/each}
+				</ul>
+				{#if !selecting}
+					<div class="completed-foot">
+						<button
+							type="button"
+							class="ios-icon-btn danger"
+							aria-label="Clear completed"
+							title="Clear completed"
+							onclick={() => list.clearCompleted()}
+						>
+							<Icon name="trash" size={20} />
+						</button>
+					</div>
+				{/if}
+			</details>
 		{/if}
 	</main>
 
-	<form class="composer" onsubmit={submit}>
-		<input
-			bind:value={draft}
-			placeholder="Add a to-do…"
-			aria-label="New to-do"
-			enterkeyhint="send"
-			autocomplete="off"
-		/>
-		<button type="submit" aria-label="Add" disabled={!draft.trim()}>
-			<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
+	{#if !selecting}
+		<button
+			type="button"
+			class="fab"
+			aria-label="Add to-do"
+			title="Add to-do"
+			onpointerdown={(e) => e.preventDefault()}
+			onclick={startAdding}
+		>
+			<Icon name="plus" size={26} stroke={2.25} />
 		</button>
-	</form>
+	{/if}
 </div>
 
 <style>
@@ -135,216 +270,194 @@
 		flex-direction: column;
 	}
 
-	header {
+	/* Nav bar: transparent over the large title, frosted once it collapses */
+	.navbar {
 		position: sticky;
 		top: 0;
-		z-index: 1;
-		padding: calc(env(safe-area-inset-top) + 16px) 16px 12px;
-		background: var(--bg);
-	}
-
-	h1 {
-		margin: 0;
-		font-size: 2rem;
-		letter-spacing: -0.02em;
-	}
-
-	.summary {
-		margin: 2px 0 14px;
-		color: var(--muted);
-		font-size: 0.9rem;
-	}
-
-	.segmented {
+		z-index: 2;
 		display: grid;
-		grid-template-columns: repeat(3, 1fr);
-		padding: 3px;
-		border-radius: 10px;
-		background: var(--border);
+		grid-template-columns: 1fr auto 1fr;
+		align-items: center;
+		height: calc(env(safe-area-inset-top) + 44px);
+		padding: env(safe-area-inset-top) var(--space-2) 0;
+		border-bottom: var(--hairline) solid transparent;
+		transition:
+			background 0.2s,
+			border-color 0.2s;
 	}
 
-	.segmented button {
-		border: 0;
-		background: transparent;
-		padding: 8px 0;
-		border-radius: 8px;
-		font-size: 0.9rem;
-		font-weight: 500;
+	.navbar.collapsed {
+		background: var(--bar-bg);
+		-webkit-backdrop-filter: saturate(180%) blur(20px);
+		backdrop-filter: saturate(180%) blur(20px);
+		border-bottom-color: var(--line);
 	}
 
-	.segmented button.active {
-		background: var(--surface);
-		box-shadow: 0 1px 3px rgb(0 0 0 / 0.12);
+	.nav-title {
+		grid-column: 2;
+		font: 600 17px/22px var(--font-ui);
+		opacity: 0;
+		transform: translateY(4px);
+		transition:
+			opacity 0.2s,
+			transform 0.2s;
 	}
 
-	main {
+	.collapsed .nav-title {
+		opacity: 1;
+		transform: none;
+	}
+
+	.nav-right {
+		grid-column: 3;
+		grid-row: 1;
+		justify-self: end;
+	}
+
+	/* Edit-mode title: left-aligned with the page content, no bar line */
+	.select-title {
+		grid-column: 1 / 3;
+		grid-row: 1;
+		justify-self: start;
+		padding-left: var(--space-2);
+		font: 600 17px/22px var(--font-ui);
+		color: var(--ink);
+	}
+
+	.nav-group {
+		display: flex;
+	}
+
+	.nav-group .danger {
+		color: var(--danger);
+	}
+
+	.head {
+		padding: 0 var(--space-4) var(--space-2);
+	}
+
+	.body {
 		flex: 1;
-		padding: 4px 16px 16px;
+		/* Room below the last row so the floating button never covers it */
+		padding: var(--space-2) var(--space-4) calc(env(safe-area-inset-bottom) + 96px);
 	}
 
-	ul {
+	/* Inset grouped list */
+	.group {
 		list-style: none;
 		margin: 0;
 		padding: 0;
-		border-radius: 14px;
+		border-radius: var(--radius-lg);
 		overflow: hidden;
-		background: var(--surface);
-		border: 1px solid var(--border);
+		background: var(--surface-raised);
 	}
 
-	li {
+	/* Completed section: a native <details>, collapsed by default */
+	.completed {
+		margin-top: var(--space-6);
+	}
+
+	.completed summary {
 		display: flex;
 		align-items: center;
-		gap: 4px;
-		min-height: 56px;
-		padding-left: 6px;
-	}
-
-	li + li {
-		border-top: 1px solid var(--border);
-	}
-
-	button {
+		gap: var(--space-2);
+		min-height: 44px;
+		padding: 0 var(--space-4) 0 var(--space-3);
+		border-radius: var(--radius-lg);
+		list-style: none;
+		font: 600 17px/22px var(--font-ui);
+		color: var(--ink);
 		cursor: pointer;
+		-webkit-user-select: none;
+		user-select: none;
 	}
 
-	.check,
-	.delete {
-		flex: none;
-		width: 44px;
-		height: 44px;
+	.completed summary::-webkit-details-marker {
+		display: none;
+	}
+
+	.completed summary:active {
+		background: var(--fill);
+	}
+
+	.chevron {
 		display: grid;
-		place-items: center;
-		border: 0;
-		background: transparent;
+		color: var(--accent);
+		transition: transform 0.25s var(--ease);
 	}
 
-	.check svg {
-		width: 26px;
-		height: 26px;
-		padding: 3px;
-		border-radius: 50%;
-		border: 2px solid var(--muted);
-		fill: none;
-		stroke: transparent;
-		stroke-width: 3;
-		stroke-linecap: round;
-		stroke-linejoin: round;
-		transition:
-			background 0.15s,
-			border-color 0.15s;
+	.completed[open] .chevron {
+		transform: rotate(90deg);
 	}
 
-	.done .check svg {
-		background: var(--accent);
-		border-color: var(--accent);
-		stroke: #fff;
-	}
-
-	.text {
+	.summary-label {
 		flex: 1;
-		min-width: 0;
-		padding: 14px 4px;
-		border: 0;
-		background: transparent;
-		text-align: left;
-		font-size: 1.05rem;
-		overflow-wrap: anywhere;
 	}
 
-	.done .text {
-		color: var(--muted);
-		text-decoration: line-through;
+	.summary-count {
+		font-weight: 400;
+		color: var(--ink-muted);
+		font-variant-numeric: tabular-nums;
 	}
 
-	.edit {
-		flex: 1;
-		min-width: 0;
-		padding: 10px 8px;
-		border: 1px solid var(--accent);
-		border-radius: 8px;
-		background: var(--bg);
-		font-size: 1.05rem;
-		outline: none;
+	.completed .group {
+		margin-top: var(--space-2);
 	}
 
-	.delete svg {
-		width: 18px;
-		height: 18px;
-		fill: none;
-		stroke: var(--muted);
-		stroke-width: 2;
-		stroke-linecap: round;
+	.completed-foot {
+		display: flex;
+		justify-content: flex-end;
+		margin-top: var(--space-1);
 	}
 
-	.delete:active svg {
-		stroke: var(--danger);
+	.completed-foot .danger {
+		color: var(--danger);
+	}
+
+	.hint {
+		margin: var(--space-2) var(--space-4) 0;
+		font: 400 13px/18px var(--font-ui);
+		color: var(--ink-muted);
 	}
 
 	.empty {
-		margin: 48px 0;
-		text-align: center;
-		color: var(--muted);
-	}
-
-	.clear {
-		display: block;
-		margin: 16px auto 0;
-		padding: 10px 16px;
-		border: 0;
-		background: transparent;
-		color: var(--danger);
-		font-size: 0.95rem;
-	}
-
-	.composer {
-		position: sticky;
-		bottom: 0;
 		display: flex;
-		gap: 8px;
-		padding: 10px 16px calc(env(safe-area-inset-bottom) + 10px);
-		background: var(--bg);
-		border-top: 1px solid var(--border);
+		flex-direction: column;
+		align-items: center;
+		gap: var(--space-1);
+		padding: 64px var(--space-6);
+		text-align: center;
+		color: var(--ink-muted);
 	}
 
-	.composer input {
-		flex: 1;
-		min-width: 0;
-		height: 48px;
-		padding: 0 16px;
-		border: 1px solid var(--border);
-		border-radius: 24px;
-		background: var(--surface);
-		/* 16px+ prevents iOS Safari from zooming on focus */
-		font-size: 1rem;
-		outline: none;
+	.empty-title {
+		margin: var(--space-2) 0 0;
+		font: 600 20px/25px var(--font-ui);
+		color: var(--ink);
 	}
 
-	.composer input:focus {
-		border-color: var(--accent);
-	}
-
-	.composer button {
-		flex: none;
-		width: 48px;
-		height: 48px;
+	/* Floating add button, bottom right within thumb reach */
+	.fab {
+		position: fixed;
+		right: max(var(--space-4), calc((100vw - 640px) / 2 + var(--space-4)));
+		bottom: calc(env(safe-area-inset-bottom) + var(--space-4));
+		z-index: 3;
+		display: grid;
+		place-items: center;
+		width: 56px;
+		height: 56px;
+		padding: 0;
 		border: 0;
 		border-radius: 50%;
 		background: var(--accent);
-		display: grid;
-		place-items: center;
+		color: var(--on-accent);
+		box-shadow: var(--shadow-pop);
+		cursor: pointer;
+		transition: transform 0.15s var(--ease);
 	}
 
-	.composer button:disabled {
-		opacity: 0.4;
+	.fab:active {
+		transform: scale(0.92);
 	}
 
-	.composer svg {
-		width: 22px;
-		height: 22px;
-		fill: none;
-		stroke: #fff;
-		stroke-width: 2.5;
-		stroke-linecap: round;
-	}
 </style>
