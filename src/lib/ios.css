@@ -51,6 +51,29 @@ body {
 	opacity: 0.4;
 }
 
+/* Icon-only button in the tint colour; always carries an aria-label */
+.ios-icon-btn {
+	display: grid;
+	place-items: center;
+	width: 44px;
+	height: 44px;
+	padding: 0;
+	border: 0;
+	border-radius: var(--radius-md);
+	background: none;
+	color: var(--accent);
+	cursor: pointer;
+}
+
+.ios-icon-btn:active {
+	opacity: 0.4;
+}
+
+.ios-icon-btn:disabled {
+	opacity: 0.3;
+	cursor: default;
+}
+
 @media (prefers-reduced-motion: reduce) {
 	*,
 	*::before,

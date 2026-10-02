@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { flushSync } from 'svelte';
 	import { flip } from 'svelte/animate';
+	import { SvelteSet } from 'svelte/reactivity';
 	import { slide } from 'svelte/transition';
 	import { cubicOut } from 'svelte/easing';
 	import { TodoList, type Filter } from '#lib/todos.svelte.ts';
@@ -15,7 +16,11 @@
 	let adding = $state(false);
 	let draft = $state('');
 	let draftInput = $state<HTMLInputElement>();
-	let editMode = $state(false);
+	// Select mode: tap rows to select them, then act on all of them at once.
+	let selecting = $state(false);
+	const selected = new SvelteSet<string>();
+	// Only act on what's on screen, so a filter can't hide what gets deleted.
+	const selectedVisible = $derived(list.visible.filter((t) => selected.has(t.uid)).map((t) => t.uid));
 	let swipedUid = $state<string | null>(null);
 
 	// Large title collapses into the nav bar once it scrolls under it.
@@ -39,7 +44,7 @@
 			return;
 		}
 		if (list.filter === 'done') list.filter = 'all';
-		editMode = false;
+		stopSelecting();
 		swipedUid = null;
 		// Render the row synchronously so focus() runs inside the tap,
 		// which is what lets iOS open the keyboard.
@@ -61,13 +66,34 @@
 	function remove(uid: string) {
 		if (swipedUid === uid) swipedUid = null;
 		list.remove(uid);
-		if (list.items.length === 0) editMode = false;
 	}
 
-	function toggleEditMode() {
-		editMode = !editMode;
+	function startSelecting() {
+		selecting = true;
 		swipedUid = null;
 	}
+
+	function stopSelecting() {
+		selecting = false;
+		selected.clear();
+	}
+
+	function toggleSelected(uid: string) {
+		if (selected.has(uid)) selected.delete(uid);
+		else selected.add(uid);
+	}
+
+	function completeSelected() {
+		list.completeMany(selectedVisible);
+		stopSelecting();
+	}
+
+	function deleteSelected() {
+		list.removeMany(selectedVisible);
+		stopSelecting();
+	}
+
+	const count = $derived(selectedVisible.length);
 
 	const empty = $derived(
 		list.filter === 'done'
@@ -78,15 +104,31 @@
 	);
 </script>
 
-<svelte:window onscroll={() => (scrollY = window.scrollY)} />
+<svelte:window
+	onscroll={() => (scrollY = window.scrollY)}
+	onkeydown={(e) => selecting && e.key === 'Escape' && stopSelecting()}
+/>
 
 <div class="app">
-	<nav class="navbar" class:collapsed>
-		<span class="nav-title" aria-hidden={!collapsed}>To-do</span>
-		{#if list.items.length > 0}
-			<button type="button" class="ios-text-btn nav-action" class:bold={editMode} onclick={toggleEditMode}>
-				{editMode ? 'Done' : 'Edit'}
+	<nav class="navbar" class:collapsed={collapsed || selecting}>
+		{#if selecting}
+			<button type="button" class="ios-icon-btn nav-left" aria-label="Cancel" title="Cancel" onclick={stopSelecting}>
+				<Icon name="x" size={22} stroke={2} />
 			</button>
+			<span class="nav-title" aria-live="polite">{count === 0 ? 'Select to-dos' : `${count} selected`}</span>
+		{:else}
+			<span class="nav-title" aria-hidden={!collapsed}>To-do</span>
+			{#if list.items.length > 0}
+				<button
+					type="button"
+					class="ios-icon-btn nav-right"
+					aria-label="Select to-dos"
+					title="Select"
+					onclick={startSelecting}
+				>
+					<Icon name="select" size={24} />
+				</button>
+			{/if}
 		{/if}
 	</nav>
 
@@ -102,8 +144,15 @@
 		{#if list.doneCount > 0}
 			<div class="completed-bar">
 				<span>{list.doneCount} completed</span>
-				<span aria-hidden="true">·</span>
-				<button type="button" class="ios-text-btn" onclick={() => list.clearCompleted()}>Clear</button>
+				<button
+					type="button"
+					class="ios-icon-btn clear"
+					aria-label="Clear completed"
+					title="Clear completed"
+					onclick={() => list.clearCompleted()}
+				>
+					<Icon name="trash" size={18} />
+				</button>
 			</div>
 		{/if}
 
@@ -129,7 +178,9 @@
 					<li animate:flip={{ duration: motion, easing: cubicOut }} transition:slide={{ duration: motion }}>
 						<TodoRow
 							{todo}
-							{editMode}
+							{selecting}
+							selected={selected.has(todo.uid)}
+							onSelect={() => toggleSelected(todo.uid)}
 							swiped={swipedUid === todo.uid}
 							onSwipe={(open) => (swipedUid = open ? todo.uid : null)}
 							onToggle={() => list.toggle(todo.uid)}
@@ -139,21 +190,47 @@
 					</li>
 				{/each}
 			</ul>
-			{#if !editMode && list.visible.length > 0}
+			{#if !selecting && list.visible.length > 0}
 				<p class="hint">Swipe left on a to-do to delete it.</p>
 			{/if}
 		{/if}
 	</main>
 
-	<button
-		type="button"
-		class="fab"
-		aria-label="Add to-do"
-		onpointerdown={(e) => e.preventDefault()}
-		onclick={startAdding}
-	>
-		<Icon name="plus" size={26} stroke={2.25} />
-	</button>
+	{#if selecting}
+		<div class="actions" role="toolbar" aria-label="Selected to-dos">
+			<button
+				type="button"
+				class="ios-icon-btn"
+				aria-label={`Mark ${count} as done`}
+				title="Mark as done"
+				disabled={count === 0}
+				onclick={completeSelected}
+			>
+				<Icon name="check" size={24} stroke={2} />
+			</button>
+			<button
+				type="button"
+				class="ios-icon-btn danger"
+				aria-label={`Delete ${count}`}
+				title="Delete"
+				disabled={count === 0}
+				onclick={deleteSelected}
+			>
+				<Icon name="trash" size={24} />
+			</button>
+		</div>
+	{:else}
+		<button
+			type="button"
+			class="fab"
+			aria-label="Add to-do"
+			title="Add to-do"
+			onpointerdown={(e) => e.preventDefault()}
+			onclick={startAdding}
+		>
+			<Icon name="plus" size={26} stroke={2.25} />
+		</button>
+	{/if}
 </div>
 
 <style>
@@ -203,13 +280,16 @@
 		transform: none;
 	}
 
-	.nav-action {
-		grid-column: 3;
-		justify-self: end;
+	.nav-left {
+		grid-column: 1;
+		grid-row: 1;
+		justify-self: start;
 	}
 
-	.nav-action.bold {
-		font-weight: 600;
+	.nav-right {
+		grid-column: 3;
+		grid-row: 1;
+		justify-self: end;
 	}
 
 	.head {
@@ -235,9 +315,10 @@
 		color: var(--ink-muted);
 	}
 
-	.completed-bar .ios-text-btn {
-		font-size: 15px;
-		padding: 0 var(--space-1);
+	.completed-bar .clear {
+		width: 36px;
+		height: 36px;
+		min-height: 0;
 	}
 
 	/* Inset grouped list */
@@ -294,5 +375,30 @@
 
 	.fab:active {
 		transform: scale(0.92);
+	}
+
+	/* Floating action bar for the selection, where the + button sits */
+	.actions {
+		position: fixed;
+		right: max(var(--space-4), calc((100vw - 640px) / 2 + var(--space-4)));
+		bottom: calc(env(safe-area-inset-bottom) + var(--space-4));
+		z-index: 3;
+		display: flex;
+		gap: var(--space-1);
+		padding: var(--space-1);
+		border-radius: 32px;
+		background: var(--surface-raised);
+		border: 1px solid var(--line);
+		box-shadow: var(--shadow-pop);
+	}
+
+	.actions .ios-icon-btn {
+		width: 48px;
+		height: 48px;
+		border-radius: 50%;
+	}
+
+	.actions .danger {
+		color: var(--danger);
 	}
 </style>

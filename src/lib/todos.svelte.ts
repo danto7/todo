@@ -52,6 +52,24 @@ export class TodoList {
 		this.#persist();
 	}
 
+	removeMany(uids: Iterable<string>) {
+		const drop = new Set(uids);
+		this.items = this.items.filter((t) => !drop.has(t.uid));
+		this.#persist();
+	}
+
+	completeMany(uids: Iterable<string>) {
+		const now = new Date().toISOString();
+		const pick = new Set(uids);
+		for (const t of this.items) {
+			if (!pick.has(t.uid) || t.status === 'COMPLETED') continue;
+			t.status = 'COMPLETED';
+			t.completed = now;
+			t.lastModified = now;
+		}
+		this.#persist();
+	}
+
 	clearCompleted() {
 		this.items = this.items.filter((t) => t.status !== 'COMPLETED');
 		this.#persist();

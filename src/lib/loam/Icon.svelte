@@ -1,8 +1,8 @@
 <script lang="ts" module>
-	// Subset of the Loam icon set (24 grid, 1.5 stroke, currentColor), plus `minus`
-	// drawn on the same grid for the iOS-style delete control.
+	// Subset of the Loam icon set (24 grid, 1.5 stroke, currentColor), plus `select`
+	// (a check in a circle) drawn on the same grid for the iOS-style select mode.
 	const PATHS = {
-		minus: 'M6 12h12',
+		select: 'M12 3a9 9 0 1 0 0 18a9 9 0 1 0 0-18zM8 12.5l2.75 2.75L16.5 9.5',
 		plus: 'M12 5v14M5 12h14',
 		x: 'M6 6l12 12M18 6L6 18',
 		check: 'M5 12.5l4.5 4.5L19 7',

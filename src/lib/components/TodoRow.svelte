@@ -5,7 +5,9 @@
 
 	let {
 		todo,
-		editMode,
+		selecting,
+		selected,
+		onSelect,
 		swiped,
 		onSwipe,
 		onToggle,
@@ -13,8 +15,10 @@
 		onDelete
 	}: {
 		todo: Todo;
-		/** iOS "Edit" mode: shows a delete control on every row. */
-		editMode: boolean;
+		/** Multi-select mode: tapping anywhere on the row selects it; no swipe or editing. */
+		selecting: boolean;
+		selected: boolean;
+		onSelect: () => void;
 		/** Whether this row's swipe action is revealed. Only one row at a time. */
 		swiped: boolean;
 		onSwipe: (open: boolean) => void;
@@ -43,7 +47,7 @@
 	const fullSwipe = $derived(dragX !== null && !!row && -dragX > row.offsetWidth * 0.6);
 
 	function pointerDown(e: PointerEvent) {
-		if (editing || editMode || e.button !== 0) return;
+		if (editing || selecting || e.button !== 0) return;
 		startX = e.clientX;
 		startY = e.clientY;
 		baseX = swiped ? -ACTION_WIDTH : 0;
@@ -51,7 +55,7 @@
 	}
 
 	function pointerMove(e: PointerEvent) {
-		if (editing || editMode || !e.buttons) return;
+		if (editing || selecting || !e.buttons) return;
 		const dx = e.clientX - startX;
 		const dy = e.clientY - startY;
 		if (!axis) {
@@ -107,7 +111,7 @@
 	}
 </script>
 
-<!-- Swipe is a touch shortcut; Edit mode offers the same delete for keyboard and screen readers. -->
+<!-- Swipe is a touch shortcut; select mode offers the same delete for keyboard and screen readers. -->
 <div
 	class="row"
 	role="group"
@@ -127,44 +131,53 @@
 		style:visibility={offset < 0 ? 'visible' : 'hidden'}
 		tabindex={swiped ? 0 : -1}
 		aria-hidden={!swiped}
+		aria-label={`Delete “${todo.summary}”`}
+		title="Delete"
 		onclick={onDelete}
 	>
-		<span>Delete</span>
+		<span class="action-icon"><Icon name="trash" size={22} /></span>
 	</button>
 
 	<div class="content" class:dragging={dragX !== null} style:transform="translateX({offset}px)">
-		<label class="check">
-			<input
-				type="checkbox"
-				checked={done}
-				onchange={onToggle}
-				aria-label={done ? `Mark “${todo.summary}” as open` : `Mark “${todo.summary}” as done`}
-			/>
-		</label>
-
-		{#if editing}
-			<input
-				class="edit"
-				bind:this={editInput}
-				bind:value={draft}
-				onblur={commit}
-				onkeydown={onKey}
-				enterkeyhint="done"
-				aria-label="Edit to-do"
-			/>
-		{:else}
-			<button type="button" class="text" onclick={startEdit}>{todo.summary}</button>
-		{/if}
-
-		{#if editMode}
+		{#if selecting}
 			<button
 				type="button"
-				class="remove"
-				aria-label={`Delete “${todo.summary}”`}
-				onclick={onDelete}
+				class="select-row"
+				class:selected
+				role="checkbox"
+				aria-checked={selected}
+				onclick={onSelect}
 			>
-				<span class="remove-dot"><Icon name="minus" size={14} stroke={2.5} /></span>
+				<span class="check" aria-hidden="true">
+					<span class="select-dot">
+						{#if selected}<Icon name="check" size={14} stroke={2.5} />{/if}
+					</span>
+				</span>
+				<span class="text">{todo.summary}</span>
 			</button>
+		{:else}
+			<label class="check">
+				<input
+					type="checkbox"
+					checked={done}
+					onchange={onToggle}
+					aria-label={done ? `Mark “${todo.summary}” as open` : `Mark “${todo.summary}” as done`}
+				/>
+			</label>
+
+			{#if editing}
+				<input
+					class="edit"
+					bind:this={editInput}
+					bind:value={draft}
+					onblur={commit}
+					onkeydown={onKey}
+					enterkeyhint="done"
+					aria-label="Edit to-do"
+				/>
+			{:else}
+				<button type="button" class="text" onclick={startEdit}>{todo.summary}</button>
+			{/if}
 		{/if}
 	</div>
 </div>
@@ -193,9 +206,10 @@
 		transition: width 0.3s var(--ease);
 	}
 
-	.action span {
+	.action-icon {
+		display: grid;
+		place-items: center;
 		width: 48px;
-		text-align: center;
 	}
 
 	.content {
@@ -311,26 +325,45 @@
 		caret-color: var(--accent);
 	}
 
-	/* Edit-mode delete control */
-	.remove {
-		flex: none;
-		display: grid;
-		place-items: center;
-		width: 44px;
-		height: 44px;
-		padding: 0;
+	/* Select mode: the whole row is one button */
+	.select-row {
+		flex: 1;
+		display: flex;
+		align-items: center;
+		min-width: 0;
+		margin-right: calc(var(--space-2) * -1);
+		padding: 0 var(--space-2) 0 0;
 		border: 0;
 		background: none;
+		text-align: left;
 		cursor: pointer;
 	}
 
-	.remove-dot {
+	.select-row.selected {
+		background: var(--accent-soft);
+	}
+
+	.select-row.selected .text {
+		color: var(--accent-ink);
+	}
+
+	.select-dot {
 		display: grid;
 		place-items: center;
-		width: 22px;
-		height: 22px;
+		width: 24px;
+		height: 24px;
+		border: 1.5px solid var(--line-strong);
 		border-radius: 50%;
-		background: var(--danger);
 		color: var(--on-accent);
+	}
+
+	.selected .select-dot {
+		background: var(--accent);
+		border-color: var(--accent);
+	}
+
+	.select-row .check,
+	.select-row .text {
+		cursor: inherit;
 	}
 </style>
