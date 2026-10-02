@@ -1,0 +1,9 @@
+{
+	"name": "To-do",
+	"short_name": "To-do",
+	"start_url": "/",
+	"display": "standalone",
+	"background_color": "#f4f5f7",
+	"theme_color": "#2f6fed",
+	"icons": [{ "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }]
+}
