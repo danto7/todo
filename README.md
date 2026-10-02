@@ -4,7 +4,8 @@ A simple, mobile-first to-do app built with [SvelteKit](https://svelte.dev/docs/
 
 - Designed for smartphones: large tap targets, bottom input bar, safe-area aware, light/dark mode.
 - Installable as a PWA ("Add to Home Screen") and works offline via a service worker.
-- To-dos are stored locally in the browser (`localStorage`) for now.
+- To-dos are stored locally in the browser (`localStorage`) for now — no back end.
+- Deployed to Vercel as a fully static site.
 
 ## Development
 
@@ -12,8 +13,14 @@ A simple, mobile-first to-do app built with [SvelteKit](https://svelte.dev/docs/
 npm install
 npm run dev -- --host   # --host lets you open it from your phone on the same network
 npm run check           # type-check
-npm run build && node build   # production server on :3000
+npm run build && npm run preview   # static build in ./build
 ```
+
+## Deployment (Vercel)
+
+Import the repository in Vercel; the SvelteKit framework preset is detected automatically
+and no settings or `vercel.json` are needed. The app uses `@sveltejs/adapter-static`, which
+detects the Vercel build environment and emits static files only (no serverless functions).
 
 ## Structure
 
@@ -29,7 +36,7 @@ npm run build && node build   # production server on :3000
 
 To-dos map 1:1 onto CalDAV `VTODO` resources, so syncing with Nextcloud, Radicale,
 Baïkal, iCloud etc. means adding a second `TodoStorage` implementation. Because most
-CalDAV servers don't send CORS headers, sync requests should go through SvelteKit
-server routes (`src/routes/api/...`), which is why the app uses `@sveltejs/adapter-node`
-rather than a static build. Candidate libraries: [`tsdav`](https://github.com/natelindev/tsdav)
+CalDAV servers don't send CORS headers, sync requests will need to go through SvelteKit
+server routes (`src/routes/api/...`). At that point, switch `adapter-static` to
+`@sveltejs/adapter-vercel` so those routes deploy as Vercel functions. Candidate libraries: [`tsdav`](https://github.com/natelindev/tsdav)
 (CalDAV/WebDAV client) and [`ical.js`](https://github.com/kewisch/ical.js) (VTODO parsing).
