@@ -128,8 +128,7 @@
 <div class="app">
 	<nav class="navbar" class:collapsed>
 		{#if selecting}
-			<!-- No visible title in edit mode; screen readers still hear the count -->
-			<span class="sr-only" aria-live="polite">{count === 0 ? 'Select to-dos' : `${count} selected`}</span>
+			<span class="select-title" aria-live="polite">{count === 0 ? 'Select to-dos' : `${count} selected`}</span>
 			<div class="nav-right nav-group">
 				<button
 					type="button"
@@ -313,6 +312,16 @@
 		grid-column: 3;
 		grid-row: 1;
 		justify-self: end;
+	}
+
+	/* Edit-mode title: left-aligned with the page content, no bar line */
+	.select-title {
+		grid-column: 1 / 3;
+		grid-row: 1;
+		justify-self: start;
+		padding-left: var(--space-2);
+		font: 600 17px/22px var(--font-ui);
+		color: var(--ink);
 	}
 
 	.nav-group {
