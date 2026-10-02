@@ -126,9 +126,10 @@
 />
 
 <div class="app">
-	<nav class="navbar" class:collapsed={collapsed || selecting}>
+	<nav class="navbar" class:collapsed>
 		{#if selecting}
-			<span class="nav-title" aria-live="polite">{count === 0 ? 'Select to-dos' : `${count} selected`}</span>
+			<!-- No visible title in edit mode; screen readers still hear the count -->
+			<span class="sr-only" aria-live="polite">{count === 0 ? 'Select to-dos' : `${count} selected`}</span>
 			<div class="nav-right nav-group">
 				<button
 					type="button"
