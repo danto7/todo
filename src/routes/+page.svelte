@@ -1,15 +1,20 @@
 <script lang="ts">
+	import { flushSync } from 'svelte';
 	import { flip } from 'svelte/animate';
 	import { slide } from 'svelte/transition';
 	import { cubicOut } from 'svelte/easing';
 	import { TodoList, type Filter } from '#lib/todos.svelte.ts';
 	import Icon from '#lib/loam/Icon.svelte';
 	import TodoRow from '#lib/components/TodoRow.svelte';
+	import NewTodoRow from '#lib/components/NewTodoRow.svelte';
 	import SegmentedControl from '#lib/components/SegmentedControl.svelte';
 
 	const list = new TodoList();
 
+	// The empty row a new to-do is typed into, opened by the floating + button.
+	let adding = $state(false);
 	let draft = $state('');
+	let draftInput = $state<HTMLInputElement>();
 	let editMode = $state(false);
 	let swipedUid = $state<string | null>(null);
 
@@ -26,10 +31,31 @@
 		{ value: 'done', label: 'Done' }
 	];
 
-	function submit(event: SubmitEvent) {
-		event.preventDefault();
+	function startAdding() {
+		if (adding) {
+			// Already typing: save what's there and stay in the new row.
+			if (draft.trim()) commitDraft();
+			draftInput?.focus();
+			return;
+		}
+		if (list.filter === 'done') list.filter = 'all';
+		editMode = false;
+		swipedUid = null;
+		// Render the row synchronously so focus() runs inside the tap,
+		// which is what lets iOS open the keyboard.
+		flushSync(() => (adding = true));
+		draftInput?.focus();
+	}
+
+	function commitDraft() {
 		list.add(draft);
 		draft = '';
+	}
+
+	function closeDraft() {
+		if (draft.trim()) commitDraft();
+		draft = '';
+		adding = false;
 	}
 
 	function remove(uid: string) {
@@ -48,7 +74,7 @@
 			? { title: 'Nothing done yet', text: 'Completed to-dos show up here.' }
 			: list.filter === 'open' && list.items.length
 				? { title: 'All done', text: 'Every to-do is checked off.' }
-				: { title: 'No to-dos', text: 'Add one below to get started.' }
+				: { title: 'No to-dos', text: 'Tap + to add one.' }
 	);
 </script>
 
@@ -81,7 +107,7 @@
 			</div>
 		{/if}
 
-		{#if list.visible.length === 0}
+		{#if list.visible.length === 0 && !adding}
 			<div class="empty">
 				<Icon name="inbox" size={28} />
 				<p class="empty-title">{empty.title}</p>
@@ -89,6 +115,16 @@
 			</div>
 		{:else}
 			<ul class="group" aria-label="To-dos">
+				{#if adding}
+					<li transition:slide={{ duration: motion }}>
+						<NewTodoRow
+							bind:value={draft}
+							bind:input={draftInput}
+							onCommit={commitDraft}
+							onClose={closeDraft}
+						/>
+					</li>
+				{/if}
 				{#each list.visible as todo (todo.uid)}
 					<li animate:flip={{ duration: motion, easing: cubicOut }} transition:slide={{ duration: motion }}>
 						<TodoRow
@@ -103,25 +139,21 @@
 					</li>
 				{/each}
 			</ul>
-			{#if !editMode}
+			{#if !editMode && list.visible.length > 0}
 				<p class="hint">Swipe left on a to-do to delete it.</p>
 			{/if}
 		{/if}
 	</main>
 
-	<form class="toolbar" onsubmit={submit}>
-		<input
-			class="field"
-			bind:value={draft}
-			placeholder="New to-do"
-			aria-label="New to-do"
-			enterkeyhint="done"
-			autocomplete="off"
-		/>
-		<button type="submit" class="add" aria-label="Add to-do" disabled={!draft.trim()}>
-			<Icon name="plus" size={20} stroke={2.25} />
-		</button>
-	</form>
+	<button
+		type="button"
+		class="fab"
+		aria-label="Add to-do"
+		onpointerdown={(e) => e.preventDefault()}
+		onclick={startAdding}
+	>
+		<Icon name="plus" size={26} stroke={2.25} />
+	</button>
 </div>
 
 <style>
@@ -190,7 +222,8 @@
 
 	.body {
 		flex: 1;
-		padding: var(--space-2) var(--space-4) var(--space-6);
+		/* Room below the last row so the floating button never covers it */
+		padding: var(--space-2) var(--space-4) calc(env(safe-area-inset-bottom) + 96px);
 	}
 
 	.completed-bar {
@@ -239,66 +272,27 @@
 		color: var(--ink);
 	}
 
-	/* Bottom toolbar: frosted, with a filled field and round tint button */
-	.toolbar {
-		position: sticky;
-		bottom: 0;
-		display: flex;
-		align-items: center;
-		gap: var(--space-2);
-		padding: var(--space-2) var(--space-4) calc(env(safe-area-inset-bottom) + var(--space-2));
-		background: var(--bar-bg);
-		-webkit-backdrop-filter: saturate(180%) blur(20px);
-		backdrop-filter: saturate(180%) blur(20px);
-		border-top: var(--hairline) solid var(--line);
-	}
-
-	.field {
-		flex: 1;
-		min-width: 0;
-		height: 40px;
-		padding: 0 var(--space-3);
-		border: 0;
-		border-radius: var(--radius-lg);
-		background: var(--fill);
-		/* 17px also keeps iOS Safari from zooming on focus */
-		font: 400 17px/22px var(--font-ui);
-		color: var(--ink);
-		caret-color: var(--accent);
-		outline: none;
-	}
-
-	.field::placeholder {
-		color: var(--ink-muted);
-	}
-
-	.field:focus-visible {
-		box-shadow: 0 0 0 2px var(--accent);
-	}
-
-	.add {
-		flex: none;
+	/* Floating add button, bottom right within thumb reach */
+	.fab {
+		position: fixed;
+		right: max(var(--space-4), calc((100vw - 640px) / 2 + var(--space-4)));
+		bottom: calc(env(safe-area-inset-bottom) + var(--space-4));
+		z-index: 3;
 		display: grid;
 		place-items: center;
-		width: 40px;
-		height: 40px;
+		width: 56px;
+		height: 56px;
 		padding: 0;
 		border: 0;
 		border-radius: 50%;
 		background: var(--accent);
 		color: var(--on-accent);
+		box-shadow: var(--shadow-pop);
 		cursor: pointer;
-		transition:
-			opacity 0.2s,
-			transform 0.15s;
+		transition: transform 0.15s var(--ease);
 	}
 
-	.add:active {
+	.fab:active {
 		transform: scale(0.92);
-	}
-
-	.add:disabled {
-		opacity: 0.35;
-		cursor: default;
 	}
 </style>
