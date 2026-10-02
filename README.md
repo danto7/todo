@@ -3,7 +3,7 @@
 A simple, mobile-first to-do app built with [SvelteKit](https://svelte.dev/docs/kit) (Svelte 5, TypeScript).
 
 - Designed for smartphones: large tap targets, bottom input bar, safe-area aware, light/dark mode.
-- Styled with the [Loam design system](https://claude.ai/artifact/67dw45QbsfkiwU25r8hKZG) (tokens in `src/lib/loam/`).
+- Styled with the [Loam design system](https://claude.ai/artifact/67dw45QbsfkiwU25r8hKZG) (tokens in `src/lib/loam/`), with iOS patterns layered on top (`src/lib/ios.css`): large collapsing title, inset grouped list, round checkboxes, swipe-to-delete and Edit mode, sliding segmented control, frosted bars, SF Pro on Apple devices.
 - Installable as a PWA ("Add to Home Screen") and works offline via a service worker.
 - To-dos are stored locally in the browser (`localStorage`) for now — no back end.
 - Deployed to Vercel as a fully static site.
@@ -32,6 +32,8 @@ detects the Vercel build environment and emits static files only (no serverless 
 | `src/lib/todos.svelte.ts` | Reactive `TodoList` store (add, toggle, rename, delete, filter) |
 | `src/routes/+page.svelte` | The mobile UI (Loam components ported to Svelte) |
 | `src/lib/loam/` | Loam tokens, base styles and icons |
+| `src/lib/ios.css` | iOS type scale, system font and bar styles on top of Loam |
+| `src/lib/components/` | `TodoRow` (swipe-to-delete, inline edit) and `SegmentedControl` |
 | `src/service-worker/` | Offline app-shell caching |
 
 ## Roadmap: WebDAV / CalDAV

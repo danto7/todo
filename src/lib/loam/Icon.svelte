@@ -1,6 +1,8 @@
 <script lang="ts" module>
-	// Subset of the Loam icon set (24 grid, 1.5 stroke, currentColor).
+	// Subset of the Loam icon set (24 grid, 1.5 stroke, currentColor), plus `minus`
+	// drawn on the same grid for the iOS-style delete control.
 	const PATHS = {
+		minus: 'M6 12h12',
 		plus: 'M12 5v14M5 12h14',
 		x: 'M6 6l12 12M18 6L6 18',
 		check: 'M5 12.5l4.5 4.5L19 7',
@@ -11,10 +13,11 @@
 </script>
 
 <script lang="ts">
-	let { name, size = 16 }: { name: IconName; size?: number } = $props();
+	let { name, size = 16, stroke = 1.5 }: { name: IconName; size?: number; stroke?: number } =
+		$props();
 </script>
 
-<svg class="lm-icon" width={size} height={size} viewBox="0 0 24 24" aria-hidden="true">
+<svg class="lm-icon" stroke-width={stroke} width={size} height={size} viewBox="0 0 24 24" aria-hidden="true">
 	<path d={PATHS[name]} />
 </svg>
 
@@ -25,7 +28,6 @@
 		vertical-align: middle;
 		fill: none;
 		stroke: currentColor;
-		stroke-width: 1.5;
 		stroke-linecap: round;
 		stroke-linejoin: round;
 	}
