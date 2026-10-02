@@ -33,7 +33,7 @@ detects the Vercel build environment and emits static files only (no serverless 
 | `src/routes/+page.svelte` | The mobile UI (Loam components ported to Svelte) |
 | `src/lib/loam/` | Loam tokens, base styles and icons |
 | `src/lib/ios.css` | iOS type scale, system font and bar styles on top of Loam |
-| `src/lib/components/` | `TodoRow` (swipe-to-delete, inline edit), and `NewTodoRow` (inline entry) |
+| `src/lib/components/` | `TodoRow` (swipe-to-delete, inline edit) and `NewTodoRow` (inline entry) |
 | `src/service-worker/` | Offline app-shell caching |
 
 ## Roadmap: WebDAV / CalDAV
