@@ -106,11 +106,6 @@
 		else selected.add(uid);
 	}
 
-	function completeSelected() {
-		list.completeMany(selectedVisible);
-		stopSelecting();
-	}
-
 	function deleteSelected() {
 		list.removeMany(selectedVisible);
 		stopSelecting();
@@ -133,21 +128,34 @@
 <div class="app">
 	<nav class="navbar" class:collapsed={collapsed || selecting}>
 		{#if selecting}
-			<button type="button" class="ios-icon-btn nav-left" aria-label="Cancel" title="Cancel" onclick={stopSelecting}>
-				<Icon name="x" size={22} stroke={2} />
-			</button>
 			<span class="nav-title" aria-live="polite">{count === 0 ? 'Select to-dos' : `${count} selected`}</span>
+			<div class="nav-right nav-group">
+				<button
+					type="button"
+					class="ios-icon-btn danger"
+					aria-label={`Delete ${count}`}
+					title="Delete"
+					disabled={count === 0}
+					onclick={deleteSelected}
+				>
+					<Icon name="trash" size={22} />
+				</button>
+				<!-- Cancel sits exactly where the pen was, so the same tap undoes it -->
+				<button type="button" class="ios-icon-btn" aria-label="Cancel" title="Cancel" onclick={stopSelecting}>
+					<Icon name="x" size={22} stroke={2} />
+				</button>
+			</div>
 		{:else}
 			<span class="nav-title" aria-hidden={!collapsed}>To-do</span>
 			{#if list.items.length > 0}
 				<button
 					type="button"
 					class="ios-icon-btn nav-right"
-					aria-label="Select to-dos"
-					title="Select"
+					aria-label="Edit to-dos"
+					title="Edit"
 					onclick={startSelecting}
 				>
-					<Icon name="select" size={24} />
+					<Icon name="pen" size={22} />
 				</button>
 			{/if}
 		{/if}
@@ -239,30 +247,7 @@
 		{/if}
 	</main>
 
-	{#if selecting}
-		<div class="actions" role="toolbar" aria-label="Selected to-dos">
-			<button
-				type="button"
-				class="ios-icon-btn"
-				aria-label={`Mark ${count} as done`}
-				title="Mark as done"
-				disabled={count === 0}
-				onclick={completeSelected}
-			>
-				<Icon name="check" size={24} stroke={2} />
-			</button>
-			<button
-				type="button"
-				class="ios-icon-btn danger"
-				aria-label={`Delete ${count}`}
-				title="Delete"
-				disabled={count === 0}
-				onclick={deleteSelected}
-			>
-				<Icon name="trash" size={24} />
-			</button>
-		</div>
-	{:else}
+	{#if !selecting}
 		<button
 			type="button"
 			class="fab"
@@ -323,16 +308,18 @@
 		transform: none;
 	}
 
-	.nav-left {
-		grid-column: 1;
-		grid-row: 1;
-		justify-self: start;
-	}
-
 	.nav-right {
 		grid-column: 3;
 		grid-row: 1;
 		justify-self: end;
+	}
+
+	.nav-group {
+		display: flex;
+	}
+
+	.nav-group .danger {
+		color: var(--danger);
 	}
 
 	.head {
@@ -463,28 +450,4 @@
 		transform: scale(0.92);
 	}
 
-	/* Floating action bar for the selection, where the + button sits */
-	.actions {
-		position: fixed;
-		right: max(var(--space-4), calc((100vw - 640px) / 2 + var(--space-4)));
-		bottom: calc(env(safe-area-inset-bottom) + var(--space-4));
-		z-index: 3;
-		display: flex;
-		gap: var(--space-1);
-		padding: var(--space-1);
-		border-radius: 32px;
-		background: var(--surface-raised);
-		border: 1px solid var(--line);
-		box-shadow: var(--shadow-pop);
-	}
-
-	.actions .ios-icon-btn {
-		width: 48px;
-		height: 48px;
-		border-radius: 50%;
-	}
-
-	.actions .danger {
-		color: var(--danger);
-	}
 </style>
